@@ -1,0 +1,7 @@
+venv/
+FreeSolv/
+qm9_processed.pt
+qm9.csv
+temp/
+free_solv.ipynb
+qm9.ipynb
