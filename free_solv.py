@@ -7,6 +7,7 @@ from torch_geometric.utils.smiles import x_map
 from torch_geometric.utils import from_smiles
 from torch_geometric.loader import DataLoader
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
 
 df = pd.read_csv(
     "FreeSolv/database.txt",
@@ -16,7 +17,7 @@ df = pd.read_csv(
     usecols=[1, 3],
     skiprows=3
 )
-
+#Only append if the smiles string is valid
 data_list = []
 for smiles, y_val in zip(df["smiles"], df["exp_value"]):
     data = from_smiles(smiles)
@@ -24,6 +25,7 @@ for smiles, y_val in zip(df["smiles"], df["exp_value"]):
         data.y = torch.tensor([[y_val]], dtype=torch.float)
         data_list.append(data)
 
+# Split data into portions: 80% train, 10% validation, 10% test
 train_data, temp_data = train_test_split(data_list, test_size=0.2, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
 
@@ -36,8 +38,9 @@ test_loader = DataLoader(test_data, batch_size=64, shuffle=False)
 class GNNModel(nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
-        # Ein Embedding pro kategorialem Atom-Feature (Atomtyp, Hybridisierung, ...)
-        # +1 als Puffer falls ein Index außerhalb der bekannten Kategorien liegt
+        # Builds an embedding layer for each atom feature
+        # x_map provides the number of values/categories that each feature can take on
+        # +1 as a buffer in case that an index lies outside the known categories
         self.embeddings = nn.ModuleList([
             nn.Embedding(len(vals) + 1, hidden_channels)
             for vals in x_map.values()
@@ -50,7 +53,8 @@ class GNNModel(nn.Module):
     def forward(self, x, edge_index, batch):
         x = x.long()
 
-        # Summe der Embeddings über alle Feature-Spalten -> [num_nodes, hidden_channels]
+        # Picks the atom features that correspond to x from the embedding layer and adds them together
+        # Combines all features into a single vector for each atom
         emb = 0
         for i, emb_layer in enumerate(self.embeddings):
             emb = emb + emb_layer(x[:, i])
@@ -63,8 +67,6 @@ class GNNModel(nn.Module):
         x = global_mean_pool(x, batch)
         return self.fc(x)
 
-
-from sklearn.metrics import r2_score
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device} ({torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'})")
